@@ -1,1 +1,17 @@
-
+{
+  "name": "bazigardaan",
+  "version": "1.0.0",
+  "description": "BaziGardaan - Persian Telegram AI Game Host",
+  "main": "index.js",
+  "type": "module",
+  "scripts": {
+    "start": "node index.js"
+  },
+  "engines": {
+    "node": ">=20"
+  },
+  "dependencies": {
+    "dotenv": "^16.4.7",
+    "telegraf": "^4.16.3"
+  }
+}
