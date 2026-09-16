@@ -6,70 +6,85 @@ class RockPaperScissors extends BaseGame {
       name: 'rock-paper-scissors',
       displayName: 'سنگ کاغذ قیچی',
       minPlayers: 2,
-      maxPlayers: 10,
+      maxPlayers: 10
     });
   }
 
   async onCreate(ctx) {
-    ctx.state = {
-      choices: {},
-      finished: false,
+    ctx.state.data = {
+      choices: new Map(),
+      scores: new Map(),
+      currentRound: 1,
+      finished: false
     };
   }
 
   async onStart(ctx) {
-    ctx.state.choices = {};
-    ctx.state.finished = false;
+    ctx.state.data.choices.clear();
+    ctx.state.data.currentRound = 1;
+    ctx.state.data.finished = false;
   }
 
-  async onPlayerJoin(ctx) {
-    // بازیکن وارد بازی شد
-  }
+  async onAction(ctx, choice) {
+    if (ctx.state.data.finished) {
+      return false;
+    }
 
-  async onPlayerLeave(ctx) {
-    // بازیکن از بازی خارج شد
-  }
-
-  async onStop(ctx) {
-    ctx.state.finished = true;
-  }
-
-  async onFinish(ctx) {
-    ctx.state.finished = true;
-  }
-
-  setChoice(ctx, playerId, choice) {
-    if (ctx.state.finished) return false;
-
-    const validChoices = ['rock', 'paper', 'scissors'];
+    const validChoices = [
+      'rock',
+      'paper',
+      'scissors'
+    ];
 
     if (!validChoices.includes(choice)) {
       return false;
     }
 
-    ctx.state.choices[playerId] = choice;
+    ctx.state.data.choices.set(
+      ctx.userId,
+      choice
+    );
 
     return true;
   }
 
-  getChoice(ctx, playerId) {
-    return ctx.state.choices[playerId] || null;
+  getChoiceName(choice) {
+    const names = {
+      rock: '🪨 سنگ',
+      paper: '📄 کاغذ',
+      scissors: '✂️ قیچی'
+    };
+
+    return names[choice] || 'نامشخص';
   }
 
-  getResult(choice1, choice2) {
-    if (choice1 === choice2) {
+  getWinner(firstChoice, secondChoice) {
+    if (
+      firstChoice === secondChoice
+    ) {
       return 'draw';
     }
 
     if (
-      (choice1 === 'rock' && choice2 === 'scissors') ||
-      (choice1 === 'paper' && choice2 === 'rock') ||
-      (choice1 === 'scissors' && choice2 === 'paper')
+      (firstChoice === 'rock' &&
+        secondChoice === 'scissors') ||
+      (firstChoice === 'paper' &&
+        secondChoice === 'rock') ||
+      (firstChoice === 'scissors' &&
+        secondChoice === 'paper')
     ) {
-      return 'player1';
+      return 'first';
     }
 
-    return 'player2';
+    return 'second';
+  }
+
+  async onStop(ctx) {
+    ctx.state.data.finished = true;
+  }
+
+  async onFinish(ctx) {
+    ctx.state.data.finished = true;
   }
 }
 
