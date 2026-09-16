@@ -1,146 +1,129 @@
-class PlayerManager {
+class Scheduler {
   constructor() {
-    this.players = new Map();
+    this.tasks = new Map();
+    this.nextId = 1;
 
-    console.log('👤 BaziGardaan Player Manager initialized');
+    console.log('⏰ BaziGardaan Scheduler initialized');
   }
 
-  create(user) {
-    if (!user?.id) {
-      throw new Error('Valid user ID is required.');
+  create(callback, delay, options = {}) {
+    if (typeof callback !== 'function') {
+      throw new Error('Scheduler callback must be a function.');
     }
 
-    const existingPlayer = this.players.get(user.id);
+    const duration = Number(delay);
 
-    if (existingPlayer) {
-      return existingPlayer;
+    if (!Number.isFinite(duration) || duration < 0) {
+      throw new Error('Invalid scheduler delay.');
     }
 
-    const player = {
-      id: user.id,
-      username: user.username || null,
-      firstName: user.first_name || user.firstName || 'Player',
-      lastName: user.last_name || user.lastName || null,
+    const id = this.nextId++;
 
-      status: 'active',
-
-      stats: {
-        games: 0,
-        wins: 0,
-        losses: 0,
-        points: 0
-      },
-
+    const task = {
+      id,
+      callback,
+      delay: duration,
+      name: options.name || `task_${id}`,
+      repeat: Boolean(options.repeat),
       createdAt: Date.now(),
-      updatedAt: Date.now()
+      timer: null
     };
 
-    this.players.set(user.id, player);
+    const execute = async () => {
+      try {
+        await callback();
+      } catch (error) {
+        console.error(
+          `❌ Scheduler task error "${task.name}":`,
+          error
+        );
+      }
 
-    console.log(`👤 Player created: ${user.id}`);
-
-    return player;
-  }
-
-  get(userId) {
-    return this.players.get(userId) || null;
-  }
-
-  has(userId) {
-    return this.players.has(userId);
-  }
-
-  update(userId, data = {}) {
-    const player = this.get(userId);
-
-    if (!player) {
-      return null;
-    }
-
-    Object.assign(player, data);
-    player.updatedAt = Date.now();
-
-    return player;
-  }
-
-  setStatus(userId, status) {
-    const player = this.get(userId);
-
-    if (!player) {
-      return null;
-    }
-
-    player.status = status;
-    player.updatedAt = Date.now();
-
-    return player;
-  }
-
-  addGame(userId) {
-    const player = this.get(userId);
-
-    if (!player) {
-      return null;
-    }
-
-    player.stats.games += 1;
-    player.updatedAt = Date.now();
-
-    return player;
-  }
-
-  addWin(userId, points = 0) {
-    const player = this.get(userId);
-
-    if (!player) {
-      return null;
-    }
-
-    player.stats.wins += 1;
-    player.stats.points += points;
-    player.updatedAt = Date.now();
-
-    return player;
-  }
-
-  addLoss(userId) {
-    const player = this.get(userId);
-
-    if (!player) {
-      return null;
-    }
-
-    player.stats.losses += 1;
-    player.updatedAt = Date.now();
-
-    return player;
-  }
-
-  getStats(userId) {
-    const player = this.get(userId);
-
-    if (!player) {
-      return null;
-    }
-
-    return {
-      ...player.stats
+      if (task.repeat && this.tasks.has(id)) {
+        task.timer = setTimeout(execute, task.delay);
+      } else {
+        this.tasks.delete(id);
+      }
     };
+
+    task.timer = setTimeout(execute, duration);
+
+    this.tasks.set(id, task);
+
+    return id;
   }
 
-  getAll() {
-    return Array.from(this.players.values());
+  once(callback, delay, options = {}) {
+    return this.create(callback, delay, {
+      ...options,
+      repeat: false
+    });
   }
 
-  remove(userId) {
-    return this.players.delete(userId);
+  every(callback, interval, options = {}) {
+    return this.create(callback, interval, {
+      ...options,
+      repeat: true
+    });
+  }
+
+  get(id) {
+    return this.tasks.get(Number(id)) || null;
+  }
+
+  has(id) {
+    return this.tasks.has(Number(id));
+  }
+
+  cancel(id) {
+    const task = this.get(id);
+
+    if (!task) {
+      return false;
+    }
+
+    if (task.timer) {
+      clearTimeout(task.timer);
+    }
+
+    this.tasks.delete(task.id);
+
+    return true;
+  }
+
+  cancelAll() {
+    for (const task of this.tasks.values()) {
+      if (task.timer) {
+        clearTimeout(task.timer);
+      }
+    }
+
+    const count = this.tasks.size;
+
+    this.tasks.clear();
+
+    return count;
+  }
+
+  count() {
+    return this.tasks.size;
+  }
+
+  list() {
+    return Array.from(this.tasks.values()).map((task) => ({
+      id: task.id,
+      name: task.name,
+      delay: task.delay,
+      repeat: task.repeat,
+      createdAt: task.createdAt
+    }));
   }
 
   clear() {
-    this.players.clear();
+    return this.cancelAll();
   }
 }
 
-const playerManager = new PlayerManager();
+const scheduler = new Scheduler();
 
-export default playerManager;
+export default scheduler;
