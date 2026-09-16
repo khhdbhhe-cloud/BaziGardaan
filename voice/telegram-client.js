@@ -2,39 +2,50 @@ import {
   TelegramClient
 } from 'teleproto';
 
+import {
+  StringSession
+} from 'teleproto/sessions';
+
 class TelegramClientManager {
   constructor() {
     this.client = null;
     this.connected = false;
   }
 
-  async connect(options = {}) {
-    if (this.connected && this.client) {
-      return this.client;
-    }
+  create() {
+    const apiId = Number(
+      process.env.TG_API_ID
+    );
 
-    const {
-      apiId,
-      apiHash,
-      session
-    } = options;
+    const apiHash =
+      process.env.TG_API_HASH;
 
     if (!apiId) {
-      throw new Error('Telegram API ID is required.');
+      throw new Error(
+        'TG_API_ID is missing.'
+      );
     }
 
     if (!apiHash) {
-      throw new Error('Telegram API Hash is required.');
+      throw new Error(
+        'TG_API_HASH is missing.'
+      );
     }
 
-    this.client = new TelegramClient(
-      session || '',
-      Number(apiId),
-      apiHash,
-      {
-        connectionRetries: 5
-      }
-    );
+    const session =
+      new StringSession(
+        process.env.TG_SESSION || ''
+      );
+
+    this.client =
+      new TelegramClient(
+        session,
+        apiId,
+        apiHash,
+        {
+          connectionRetries: 5
+        }
+      );
 
     return this.client;
   }
@@ -48,7 +59,8 @@ class TelegramClientManager {
   }
 
   setConnected(value) {
-    this.connected = Boolean(value);
+    this.connected =
+      Boolean(value);
   }
 
   async disconnect() {
