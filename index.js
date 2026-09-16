@@ -1,5 +1,6 @@
 import 'dotenv/config';
 import { Telegraf } from 'telegraf';
+import http from 'http';
 
 const BOT_TOKEN = process.env.BOT_TOKEN;
 
@@ -20,7 +21,6 @@ const botReplies = [
   'بله قربان، بازی‌گردان حاضر است 🎮😂'
 ];
 
-// تست اولیه: وقتی کسی فقط «ربات» می‌نویسد
 bot.hears(/^ربات$/i, async (ctx) => {
   const reply =
     botReplies[Math.floor(Math.random() * botReplies.length)];
@@ -32,7 +32,6 @@ bot.hears(/^ربات$/i, async (ctx) => {
   });
 });
 
-// دستور شروع
 bot.start(async (ctx) => {
   await ctx.reply(
     '🎮 سلام! من بازی‌گردانم.\n\n' +
@@ -41,15 +40,22 @@ bot.start(async (ctx) => {
   );
 });
 
-// مدیریت خطا
 bot.catch((err, ctx) => {
   console.error('❌ Bot Error:', err);
 
-  try {
-    ctx.reply('⚠️ یه مشکلی پیش اومد، دوباره امتحان کن.');
-  } catch {
-    // جلوگیری از خطای دوم
-  }
+  ctx.reply('⚠️ یه مشکلی پیش اومد، دوباره امتحان کن.').catch(() => {});
+});
+
+// سرور ساده برای Render
+const PORT = process.env.PORT || 10000;
+
+const server = http.createServer((req, res) => {
+  res.writeHead(200, { 'Content-Type': 'text/plain; charset=utf-8' });
+  res.end('BaziGardaan ONLINE');
+});
+
+server.listen(PORT, '0.0.0.0', () => {
+  console.log(`🌐 HTTP server running on port ${PORT}`);
 });
 
 // راه‌اندازی ربات
@@ -65,6 +71,12 @@ bot.launch()
     process.exit(1);
   });
 
-// خاموش شدن صحیح برنامه
-process.once('SIGINT', () => bot.stop('SIGINT'));
-process.once('SIGTERM', () => bot.stop('SIGTERM'));
+process.once('SIGINT', () => {
+  bot.stop('SIGINT');
+  server.close();
+});
+
+process.once('SIGTERM', () => {
+  bot.stop('SIGTERM');
+  server.close();
+});
