@@ -2,24 +2,21 @@ import 'dotenv/config';
 import { Telegraf, Markup } from 'telegraf';
 import http from 'http';
 
-import gameEngine from './core/engine.js';
-import commandManager from './core/command-manager.js';
 import gameRegistry from './core/game-registry.js';
 import gameManager from './core/game-manager.js';
+import commandManager from './core/command-manager.js';
 import middlewareManager from './core/middleware.js';
 import gameEvents from './core/game-events.js';
 import gameActions from './core/game-actions.js';
-import gameTurn from './core/game-turn.js';
 import gameTimer from './core/game-timer.js';
 import gameScore from './core/game-score.js';
-import gameLogger from './core/game-logger.js';
 import responseManager from './core/response.js';
 import errorHandler from './core/error-handler.js';
 import commandParser from './core/command-parser.js';
 import GameContext from './core/game-context.js';
 import CommandContext from './core/command-context.js';
 
-import rockPaperScissors from './games/rock-paper-scissors.js';
+import rockPaperScissors from './games/rock-paper-scissors/game.js';
 
 const BOT_TOKEN = process.env.BOT_TOKEN;
 
@@ -84,6 +81,65 @@ const botReplies = [
   'جان؟ صدای منو زدی؟ 😏',
   'بله قربان، بازی‌گردان حاضر است 🎮'
 ];
+
+/* =========================
+   ابزارهای کمکی
+========================= */
+
+function getPlayerName(player) {
+  return (
+    player?.first_name ||
+    player?.username ||
+    'بازیکن'
+  );
+}
+
+function isCreator(session, userId) {
+  return (
+    Number(session?.data?.creatorId) ===
+    Number(userId)
+  );
+}
+
+function getRpsKeyboard(chatId) {
+  return Markup.inlineKeyboard([
+    [
+      Markup.button.callback(
+        '🪨 سنگ',
+        `rps:rock:${chatId}`
+      ),
+      Markup.button.callback(
+        '📄 کاغذ',
+        `rps:paper:${chatId}`
+      ),
+      Markup.button.callback(
+        '✂️ قیچی',
+        `rps:scissors:${chatId}`
+      )
+    ]
+  ]);
+}
+
+function getWaitingKeyboard(chatId) {
+  return Markup.inlineKeyboard([
+    [
+      Markup.button.callback(
+        '➕ ورود به بازی',
+        `rps:join:${chatId}`
+      )
+    ],
+    [
+      Markup.button.callback(
+        '▶️ شروع',
+        `rps:start:${chatId}`
+      ),
+      Markup.button.callback(
+        '🛑 لغو',
+        `rps:stop:${chatId}`
+      )
+    ]
+  ]);
+}
 
 /* =========================
    Middleware Context
@@ -168,8 +224,7 @@ bot.hears(/^ربات$/i, async (ctx) => {
   const reply =
     botReplies[
       Math.floor(
-        Math.random() *
-        botReplies.length
+        Math.random() * botReplies.length
       )
     ];
 
@@ -234,11 +289,12 @@ bot.hears(/^بازی‌ها$/i, async (ctx) => {
 });
 
 /* =========================
-   شروع بازی
+   ساخت بازی
 ========================= */
 
 bot.hears(/^بازی$/i, async (ctx) => {
   const chatId = ctx.chat.id;
+  const creatorId = ctx.from.id;
 
   try {
     if (gameManager.getSession(chatId)) {
@@ -253,52 +309,26 @@ bot.hears(/^بازی$/i, async (ctx) => {
         'rock-paper-scissors'
       );
 
+    /*
+     * شناسه سازنده بازی
+     * برای کنترل دکمه‌های شروع و لغو
+     */
+    session.data = session.data || {};
+    session.data.creatorId = creatorId;
+
     gameManager.addPlayer(
       chatId,
       ctx.from
     );
 
-    const keyboard =
-      Markup.inlineKeyboard([
-        [
-          Markup.button.callback(
-            '🪨 سنگ',
-            `rps:rock:${chatId}`
-          ),
-          Markup.button.callback(
-            '📄 کاغذ',
-            `rps:paper:${chatId}`
-          ),
-          Markup.button.callback(
-            '✂️ قیچی',
-            `rps:scissors:${chatId}`
-          )
-        ],
-        [
-          Markup.button.callback(
-            '➕ ورود به بازی',
-            `rps:join:${chatId}`
-          )
-        ],
-        [
-          Markup.button.callback(
-            '▶️ شروع',
-            `rps:start:${chatId}`
-          ),
-          Markup.button.callback(
-            '🛑 لغو',
-            `rps:stop:${chatId}`
-          )
-        ]
-      ]);
-
     await ctx.reply(
       '🎮 『 سنگ کاغذ قیچی 』\n\n' +
       'بازی ساخته شد!\n\n' +
-      '👥 بازیکن فعلی: 1 نفر\n' +
-      '👤 برای ورود روی «➕ ورود به بازی» بزنید.\n\n' +
+      `👤 سازنده: ${getPlayerName(ctx.from)}\n` +
+      '👥 بازیکن فعلی: 1 نفر\n\n' +
+      'برای ورود روی «➕ ورود به بازی» بزنید.\n\n' +
       'حداقل بازیکن برای شروع: 2 نفر',
-      keyboard
+      getWaitingKeyboard(chatId)
     );
 
     return session;
@@ -315,7 +345,7 @@ bot.hears(/^بازی$/i, async (ctx) => {
 });
 
 /* =========================
-   دکمه‌های سنگ کاغذ قیچی
+   انتخاب سنگ / کاغذ / قیچی
 ========================= */
 
 bot.action(
@@ -348,20 +378,12 @@ bot.action(
       );
     }
 
-    const state =
-      gameManager.getState(chatId);
-
-    const game =
-      gameManager.getGame(
-        'rock-paper-scissors'
-      );
-
     const players =
       gameManager.getPlayers(chatId);
 
     const player =
       players.find(
-        (item) =>
+        item =>
           Number(item.id) ===
           Number(ctx.from.id)
       );
@@ -373,6 +395,14 @@ bot.action(
       );
     }
 
+    const state =
+      gameManager.getState(chatId);
+
+    const game =
+      gameManager.getGame(
+        'rock-paper-scissors'
+      );
+
     const context = {
       ctx,
       chatId,
@@ -383,11 +413,22 @@ bot.action(
       players
     };
 
-    const result =
+    try {
       await game.onAction(
         context,
         choice
       );
+    } catch (error) {
+      console.error(
+        '❌ RPS action error:',
+        error
+      );
+
+      return ctx.answerCbQuery(
+        'ثبت انتخاب انجام نشد.',
+        { show_alert: true }
+      );
+    }
 
     await ctx.answerCbQuery(
       `انتخابت ثبت شد: ${game.getChoiceName(choice)}`
@@ -403,11 +444,14 @@ bot.action(
     const entries =
       Array.from(choices.entries());
 
-    const [firstId, firstChoice] =
-      entries[0];
+    if (entries.length < 2) {
+      return;
+    }
 
-    const [secondId, secondChoice] =
-      entries[1];
+    const [
+      [firstId, firstChoice],
+      [secondId, secondChoice]
+    ] = entries;
 
     const roundWinner =
       game.getWinner(
@@ -423,7 +467,9 @@ bot.action(
         firstId,
         (scores.get(firstId) || 0) + 1
       );
-    } else if (roundWinner === 'second') {
+    }
+
+    if (roundWinner === 'second') {
       scores.set(
         secondId,
         (scores.get(secondId) || 0) + 1
@@ -432,23 +478,23 @@ bot.action(
 
     const firstPlayer =
       players.find(
-        (p) => Number(p.id) === Number(firstId)
+        p =>
+          Number(p.id) ===
+          Number(firstId)
       );
 
     const secondPlayer =
       players.find(
-        (p) => Number(p.id) === Number(secondId)
+        p =>
+          Number(p.id) ===
+          Number(secondId)
       );
 
     const firstName =
-      firstPlayer?.first_name ||
-      firstPlayer?.username ||
-      'بازیکن اول';
+      getPlayerName(firstPlayer);
 
     const secondName =
-      secondPlayer?.first_name ||
-      secondPlayer?.username ||
-      'بازیکن دوم';
+      getPlayerName(secondPlayer);
 
     let resultText =
       '🎮 نتیجه راند\n\n' +
@@ -456,11 +502,14 @@ bot.action(
       `👤 ${secondName}: ${game.getChoiceName(secondChoice)}\n\n`;
 
     if (roundWinner === 'draw') {
-      resultText += '🤝 مساوی شد!';
+      resultText +=
+        '🤝 مساوی شد!';
     } else if (roundWinner === 'first') {
-      resultText += `🏆 برنده این راند: ${firstName}`;
+      resultText +=
+        `🏆 برنده این راند: ${firstName}`;
     } else {
-      resultText += `🏆 برنده این راند: ${secondName}`;
+      resultText +=
+        `🏆 برنده این راند: ${secondName}`;
     }
 
     const firstScore =
@@ -470,7 +519,7 @@ bot.action(
       scores.get(secondId) || 0;
 
     resultText +=
-      `\n\n📊 امتیاز:\n` +
+      '\n\n📊 امتیاز:\n' +
       `${firstName}: ${firstScore}\n` +
       `${secondName}: ${secondScore}`;
 
@@ -489,9 +538,16 @@ bot.action(
         `\n\n🏆 برنده نهایی: ${winner}\n` +
         '🎉 بازی به پایان رسید!';
 
-      await ctx.editMessageText(
-        resultText
-      );
+      try {
+        await ctx.editMessageText(
+          resultText
+        );
+      } catch (error) {
+        console.error(
+          '❌ Edit result error:',
+          error
+        );
+      }
 
       await gameManager.finishGame(
         chatId,
@@ -510,27 +566,19 @@ bot.action(
     state.data.currentRound += 1;
     state.data.choices.clear();
 
-    await ctx.editMessageText(
-      resultText +
-      '\n\n🔄 راند بعدی شروع شد!\n' +
-      'انتخاب خود را بزنید:',
-      Markup.inlineKeyboard([
-        [
-          Markup.button.callback(
-            '🪨 سنگ',
-            `rps:rock:${chatId}`
-          ),
-          Markup.button.callback(
-            '📄 کاغذ',
-            `rps:paper:${chatId}`
-          ),
-          Markup.button.callback(
-            '✂️ قیچی',
-            `rps:scissors:${chatId}`
-          )
-        ]
-      ])
-    );
+    try {
+      await ctx.editMessageText(
+        resultText +
+        '\n\n🔄 راند بعدی شروع شد!\n' +
+        'انتخاب خود را بزنید:',
+        getRpsKeyboard(chatId)
+      );
+    } catch (error) {
+      console.error(
+        '❌ Edit next round error:',
+        error
+      );
+    }
   }
 );
 
@@ -541,7 +589,8 @@ bot.action(
 bot.action(
   /^rps:join:(-?\d+)$/,
   async (ctx) => {
-    const chatId = Number(ctx.match[1]);
+    const chatId =
+      Number(ctx.match[1]);
 
     if (ctx.chat?.id !== chatId) {
       return ctx.answerCbQuery(
@@ -572,7 +621,7 @@ bot.action(
 
     const exists =
       players.some(
-        (player) =>
+        player =>
           Number(player.id) ===
           Number(ctx.from.id)
       );
@@ -604,9 +653,9 @@ bot.action(
     );
 
     await ctx.reply(
-      `➕ ${ctx.from.first_name || 'بازیکن'} وارد بازی شد.\n\n` +
+      `➕ ${getPlayerName(ctx.from)} وارد بازی شد.\n\n` +
       `👥 تعداد بازیکنان: ${count}\n` +
-      'وقتی حداقل ۲ نفر شدند، روی «▶️ شروع» بزنید.'
+      'وقتی حداقل ۲ نفر شدند، سازنده بازی می‌تواند آن را شروع کند.'
     );
   }
 );
@@ -618,7 +667,8 @@ bot.action(
 bot.action(
   /^rps:start:(-?\d+)$/,
   async (ctx) => {
-    const chatId = Number(ctx.match[1]);
+    const chatId =
+      Number(ctx.match[1]);
 
     const session =
       gameManager.getSession(chatId);
@@ -626,6 +676,21 @@ bot.action(
     if (!session) {
       return ctx.answerCbQuery(
         'بازی وجود ندارد.',
+        { show_alert: true }
+      );
+    }
+
+    /*
+     * فقط سازنده بازی اجازه شروع دارد
+     */
+    if (
+      !isCreator(
+        session,
+        ctx.from.id
+      )
+    ) {
+      return ctx.answerCbQuery(
+        'فقط سازنده بازی می‌تواند بازی را شروع کند.',
         { show_alert: true }
       );
     }
@@ -647,7 +712,21 @@ bot.action(
       );
     }
 
-    await gameManager.startGame(chatId);
+    try {
+      await gameManager.startGame(
+        chatId
+      );
+    } catch (error) {
+      console.error(
+        '❌ Start game error:',
+        error
+      );
+
+      return ctx.answerCbQuery(
+        'شروع بازی انجام نشد.',
+        { show_alert: true }
+      );
+    }
 
     await ctx.answerCbQuery(
       'بازی شروع شد 🎮'
@@ -656,23 +735,8 @@ bot.action(
     await ctx.editMessageText(
       '🎮 『 سنگ کاغذ قیچی 』\n\n' +
       '🔥 بازی شروع شد!\n\n' +
-      'هر دو بازیکن انتخاب خود را بزنند:',
-      Markup.inlineKeyboard([
-        [
-          Markup.button.callback(
-            '🪨 سنگ',
-            `rps:rock:${chatId}`
-          ),
-          Markup.button.callback(
-            '📄 کاغذ',
-            `rps:paper:${chatId}`
-          ),
-          Markup.button.callback(
-            '✂️ قیچی',
-            `rps:scissors:${chatId}`
-          )
-        ]
-      ])
+      'هر بازیکن انتخاب خود را بزند:',
+      getRpsKeyboard(chatId)
     );
   }
 );
@@ -684,7 +748,8 @@ bot.action(
 bot.action(
   /^rps:stop:(-?\d+)$/,
   async (ctx) => {
-    const chatId = Number(ctx.match[1]);
+    const chatId =
+      Number(ctx.match[1]);
 
     const session =
       gameManager.getSession(chatId);
@@ -695,15 +760,51 @@ bot.action(
       );
     }
 
-    await gameManager.stopGame(chatId);
+    /*
+     * فقط سازنده بازی اجازه لغو دارد
+     */
+    if (
+      !isCreator(
+        session,
+        ctx.from.id
+      )
+    ) {
+      return ctx.answerCbQuery(
+        'فقط سازنده بازی می‌تواند بازی را لغو کند.',
+        { show_alert: true }
+      );
+    }
+
+    try {
+      await gameManager.stopGame(
+        chatId
+      );
+    } catch (error) {
+      console.error(
+        '❌ Stop game error:',
+        error
+      );
+
+      return ctx.answerCbQuery(
+        'لغو بازی انجام نشد.',
+        { show_alert: true }
+      );
+    }
 
     await ctx.answerCbQuery(
       'بازی لغو شد.'
     );
 
-    await ctx.editMessageText(
-      '🛑 بازی لغو شد.'
-    );
+    try {
+      await ctx.editMessageText(
+        '🛑 بازی توسط سازنده لغو شد.'
+      );
+    } catch (error) {
+      console.error(
+        '❌ Edit stop message error:',
+        error
+      );
+    }
   }
 );
 
@@ -723,12 +824,15 @@ bot.command('core', async (ctx) => {
     `📡 Game Events: ${gameEvents.list().length}\n\n` +
     '✅ هسته فعال است.';
 
-  await ctx.reply(text, {
-    reply_parameters: {
-      message_id:
-        ctx.message.message_id
+  await ctx.reply(
+    text,
+    {
+      reply_parameters: {
+        message_id:
+          ctx.message.message_id
+      }
     }
-  });
+  );
 });
 
 /* =========================
@@ -772,7 +876,17 @@ bot.catch((err, ctx) => {
     err
   );
 
-  errorHandler.handle(err, { ctx });
+  try {
+    errorHandler.handle(
+      err,
+      { ctx }
+    );
+  } catch (error) {
+    console.error(
+      '❌ Error handler failed:',
+      error
+    );
+  }
 
   ctx.reply(
     '⚠️ یه مشکلی پیش اومد، دوباره امتحان کن.'
