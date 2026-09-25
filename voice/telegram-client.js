@@ -4,7 +4,7 @@ import {
 
 import {
   StringSession
-} from 'teleproto/sessions';
+} from 'teleproto/sessions/index.js';
 
 class TelegramClientManager {
   constructor() {
