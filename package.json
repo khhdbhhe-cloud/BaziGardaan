@@ -1,18 +1,16 @@
 {
-  "name": "bazigardaan",
+  "name": "bazigardaan-group-manager",
   "version": "1.0.0",
-  "description": "BaziGardaan - Persian Telegram AI Game Host",
+  "description": "ربات پیشرفته مدیریت گروه با سیستم نصب اختصاصی و هماهنگ با رندر",
   "main": "index.js",
-  "type": "module",
   "scripts": {
     "start": "node index.js"
   },
-  "engines": {
-    "node": ">=20"
-  },
   "dependencies": {
-    "dotenv": "^16.4.7",
     "telegraf": "^4.16.3",
-    "teleproto": "^1.229.0"
-  }
+    "mongoose": "^8.0.0",
+    "express": "^4.18.2"
+  },
+  "author": "پشتیبانی ربات",
+  "license": "ISC"
 }
